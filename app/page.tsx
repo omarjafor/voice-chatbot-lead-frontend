@@ -1,7 +1,5 @@
 "use client"
-
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,7 +55,6 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isAutoStartingRef = useRef(false)
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -90,7 +87,6 @@ export default function ChatPage() {
         recognitionRef.current.lang = "en-US"
 
         recognitionRef.current.onresult = (event: any) => {
-          // Clear no-speech timeout
           if (noSpeechTimeout) {
             clearTimeout(noSpeechTimeout)
             setNoSpeechTimeout(null)
@@ -104,17 +100,14 @@ export default function ChatPage() {
         recognitionRef.current.onerror = (event: any) => {
           console.log("Speech recognition error:", event.error)
 
-          // Clear no-speech timeout
           if (noSpeechTimeout) {
             clearTimeout(noSpeechTimeout)
             setNoSpeechTimeout(null)
           }
 
-          // Handle no-speech error gracefully
           if (event.error === "no-speech") {
             setError("I didn't hear anything. Please click the Speak button to try again.")
           } else if (event.error === "aborted") {
-            // Silently handle aborted errors (user stopped speaking)
             console.log("Recognition aborted, will auto-restart if needed")
           } else {
             setError(`Speech recognition error: ${event.error}`)
@@ -127,7 +120,6 @@ export default function ChatPage() {
           console.log("Speech recognition ended")
           setIsListening(false)
           isAutoStartingRef.current = false
-          // Clear no-speech timeout
           if (noSpeechTimeout) {
             clearTimeout(noSpeechTimeout)
             setNoSpeechTimeout(null)
@@ -160,7 +152,6 @@ export default function ChatPage() {
 
       const data = await response.json()
       setSessionId(data.session_id)
-
       const greeting = `Hello! I'm ${selectedAgent.name}, your virtual assistant. ${data.message}`
 
       const agentMessage: Message = {
@@ -182,7 +173,6 @@ export default function ChatPage() {
     }
   }
 
-  // Handle user message
   const handleUserMessage = async (userText: string) => {
     if (!sessionId || isComplete) return
 
@@ -192,7 +182,7 @@ export default function ChatPage() {
       timestamp: new Date(),
     }
     setMessages((prev) => [...prev, userMessage])
-    setTextInput("") // Clear text input
+    setTextInput("")
 
     try {
       const response = await fetch(`${API_URL}/api/chat/message`, {
@@ -215,25 +205,20 @@ export default function ChatPage() {
       }
       setMessages((prev) => [...prev, agentMessage])
 
-      // Check if we should enable manual input mode
       if (data.validation_error === "max_retries_email" || data.validation_error === "max_retries_phone") {
         setManualInputMode(true)
         shouldAutoStartRef.current = false
       } else {
-        // Clear manual input mode if no max retries error
         setManualInputMode(false)
       }
 
-      // Handle conversation completion
       if (data.is_complete) {
         setIsComplete(true)
         shouldAutoStartRef.current = false
       } else {
-        // Set auto-listen based on backend response (MUST be after completion check)
         shouldAutoStartRef.current = data.should_auto_listen !== false && audioEnabled && !manualInputMode
       }
 
-      // Always speak the agent's response if audio is enabled
       if (audioEnabled) {
         speak(data.agent_message)
       }
@@ -246,7 +231,6 @@ export default function ChatPage() {
   const speak = (text: string) => {
     if (!synthRef.current) return
 
-    // Cancel any ongoing speech
     synthRef.current.cancel()
     
     const utterance = new SpeechSynthesisUtterance(text)
@@ -254,12 +238,10 @@ export default function ChatPage() {
     let selectedVoice: SpeechSynthesisVoice | null = null
 
     if (availableVoices.length > 0) {
-      // Improved voice filtering by gender
       const genderFilteredVoices = availableVoices.filter((v) => {
         const voiceName = v.name.toLowerCase()
         const voiceLang = v.lang.toLowerCase()
         
-        // Only use English voices
         const isEnglish = voiceLang.includes('en-us') || voiceLang.includes('en-gb') || voiceLang.includes('en')
         
         if (!isEnglish) return false
@@ -284,7 +266,6 @@ export default function ChatPage() {
             ))
           )
         } else {
-          // Better male voice filtering
           return (
             voiceName.includes('male') ||
             voiceName.includes('david') ||
@@ -300,15 +281,11 @@ export default function ChatPage() {
         }
       })
 
-      console.log(`Available ${selectedAgent.gender} voices:`, genderFilteredVoices.map(v => v.name))
-
-      // Use the voice index to select from filtered voices
       if (genderFilteredVoices.length > 0) {
         const voiceIdx = selectedAgent.voiceIndex % genderFilteredVoices.length
         selectedVoice = genderFilteredVoices[voiceIdx]
         console.log(`Selected voice: ${selectedVoice.name}`)
       } else {
-        // Fallback to any available voice
         console.log("No gender-filtered voices found, using fallback")
         selectedVoice = availableVoices[selectedAgent.voiceIndex % availableVoices.length]
       }
@@ -328,63 +305,48 @@ export default function ChatPage() {
 
     utterance.onend = () => {
       console.log("Speech synthesis ended")
-      console.log("shouldAutoStart:", shouldAutoStartRef.current)
-      console.log("audioEnabled:", audioEnabled)
-      console.log("isComplete:", isComplete)
-      console.log("manualInputMode:", manualInputMode)
-      
       setIsSpeaking(false)
 
-      // Auto-start speech recognition if all conditions are met
-      if (shouldAutoStartRef.current && audioEnabled && !isComplete && !manualInputMode && !isAutoStartingRef.current) {
-        console.log("✅ Auto-starting speech recognition...")
-        isAutoStartingRef.current = true
+      isAutoStartingRef.current = false
 
-        // Shorter delay for more natural conversation flow
+      if (
+        shouldAutoStartRef.current &&
+        audioEnabled &&
+        !isComplete &&
+        !manualInputMode
+      ) {
+        console.log("✅ Auto-starting speech recognition...")
+
         setTimeout(() => {
           if (recognitionRef.current && !isListening) {
             try {
               recognitionRef.current.start()
               setIsListening(true)
               setError(null)
-              console.log("🎤 Microphone activated, listening...")
 
-              // 12 seconds timeout for user response
               const timeout = setTimeout(() => {
                 if (isListening && recognitionRef.current) {
                   console.log("⏰ No speech detected, stopping recognition")
                   recognitionRef.current.stop()
-                  setError("I didn't hear you. Please click the Speak button when you're ready to answer.")
+                  setError("I didn't hear you. Please click the Speak button when you're ready.")
                   setIsListening(false)
-                  isAutoStartingRef.current = false
                 }
-              }, 12000)
+              }, 8000)
               setNoSpeechTimeout(timeout)
             } catch (error) {
               console.error("❌ Error starting recognition:", error)
-              isAutoStartingRef.current = false
-              
-              // Retry once after a short delay
-              setTimeout(() => {
-                if (recognitionRef.current && !isListening && shouldAutoStartRef.current) {
-                  try {
-                    console.log("🔄 Retrying speech recognition...")
-                    recognitionRef.current.start()
-                    setIsListening(true)
-                    isAutoStartingRef.current = false
-                  } catch (retryError) {
-                    console.error("❌ Retry failed:", retryError)
-                    isAutoStartingRef.current = false
-                  }
-                }
-              }, 500)
+              setError("Could not start microphone. Please click the Speak button.")
             }
-          } else {
-            isAutoStartingRef.current = false
           }
-        }, 800) // Reduced delay for smoother experience
+        }, 500)
       } else {
-        console.log("❌ Auto-start conditions not met")
+        console.log("❌ Auto-start skipped:", {
+          shouldAuto: shouldAutoStartRef.current,
+          audioEnabled,
+          isComplete,
+          manualInputMode,
+          isListening
+        })
       }
     }
 
@@ -425,7 +387,7 @@ export default function ChatPage() {
             setError("I didn't hear you. Please click the Speak button when you're ready to answer.")
             setIsListening(false)
           }
-        }, 12000) // 12 seconds timeout
+        }, 8000)
         setNoSpeechTimeout(timeout)
       } catch (error) {
         console.error("Error starting recognition:", error)
@@ -434,7 +396,6 @@ export default function ChatPage() {
     }
   }
 
-  // Stop speaking
   const stopSpeaking = () => {
     if (synthRef.current) {
       synthRef.current.cancel()
@@ -447,7 +408,7 @@ export default function ChatPage() {
     e.preventDefault()
     const trimmedInput = textInput.trim()
     if (trimmedInput) {
-      setError(null) // Clear any previous errors
+      setError(null)
       handleUserMessage(trimmedInput)
     }
   }
@@ -569,7 +530,7 @@ export default function ChatPage() {
               onClick={toggleListening}
               disabled={isComplete || isSpeaking || manualInputMode}
               variant={isListening ? "destructive" : "default"}
-              className="flex-1"
+              className="flex-1 cursor-pointer"
             >
               {isListening ? (
                 <>
