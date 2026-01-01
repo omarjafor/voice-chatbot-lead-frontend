@@ -97,12 +97,12 @@ export default function ChatPage() {
           }
 
           const transcript = event.results[0][0].transcript
-          console.log("[v0] Speech recognized:", transcript)
+          console.log("Speech recognized:", transcript)
           handleUserMessage(transcript)
         }
 
         recognitionRef.current.onerror = (event: any) => {
-          console.log("[v0] Speech recognition error:", event.error)
+          console.log("Speech recognition error:", event.error)
 
           // Clear no-speech timeout
           if (noSpeechTimeout) {
@@ -121,7 +121,7 @@ export default function ChatPage() {
         }
 
         recognitionRef.current.onend = () => {
-          console.log("[v0] Speech recognition ended")
+          console.log("Speech recognition ended")
           setIsListening(false)
           isAutoStartingRef.current = false
           // Clear no-speech timeout
@@ -292,16 +292,16 @@ export default function ChatPage() {
     utterance.pitch = selectedAgent.pitch
 
     utterance.onstart = () => {
-      console.log("[v0] Speech synthesis started")
+      console.log("Speech synthesis started")
       setIsSpeaking(true)
     }
 
     utterance.onend = () => {
-      console.log("[v0] Speech synthesis ended, shouldAutoStart:", shouldAutoStartRef.current)
+      console.log("Speech synthesis ended, shouldAutoStart:", shouldAutoStartRef.current)
       setIsSpeaking(false)
 
       if (shouldAutoStartRef.current && audioEnabled && !isComplete && !manualInputMode && !isAutoStartingRef.current) {
-        console.log("[v0] Auto-starting speech recognition...")
+        console.log("Auto-starting speech recognition...")
         isAutoStartingRef.current = true
 
         setTimeout(() => {
@@ -313,7 +313,7 @@ export default function ChatPage() {
 
               const timeout = setTimeout(() => {
                 if (isListening && recognitionRef.current) {
-                  console.log("[v0] No speech detected, stopping recognition")
+                  console.log("No speech detected, stopping recognition")
                   recognitionRef.current.stop()
                   setError("I didn't hear you. Please click the Speak button when you're ready to answer.")
                   setIsListening(false)
@@ -322,7 +322,7 @@ export default function ChatPage() {
               }, 8000)
               setNoSpeechTimeout(timeout)
             } catch (error) {
-              console.error("[v0] Error starting recognition:", error)
+              console.error("Error starting recognition:", error)
               isAutoStartingRef.current = false
             }
           }
@@ -340,7 +340,7 @@ export default function ChatPage() {
     }
 
     if (isListening) {
-      console.log("[v0] Manually stopping speech recognition")
+      console.log("Manually stopping speech recognition")
       recognitionRef.current.stop()
       setIsListening(false)
       isAutoStartingRef.current = false
@@ -350,14 +350,14 @@ export default function ChatPage() {
       }
     } else {
       try {
-        console.log("[v0] Manually starting speech recognition")
+        console.log("Manually starting speech recognition")
         recognitionRef.current.start()
         setIsListening(true)
         setError(null)
 
         const timeout = setTimeout(() => {
           if (isListening && recognitionRef.current) {
-            console.log("[v0] No speech timeout reached")
+            console.log("No speech timeout reached")
             recognitionRef.current.stop()
             setError("I didn't hear you. Please click the Speak button when you're ready to answer.")
             setIsListening(false)
@@ -365,7 +365,7 @@ export default function ChatPage() {
         }, 8000)
         setNoSpeechTimeout(timeout)
       } catch (error) {
-        console.error("[v0] Error starting recognition:", error)
+        console.error("Error starting recognition:", error)
         setError("Could not start speech recognition. Please try again.")
       }
     }
