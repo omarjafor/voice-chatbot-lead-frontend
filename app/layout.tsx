@@ -10,7 +10,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Voice Lead Collection Chatbot",
   description: "AI-powered voice chatbot for collecting lead information",
-  generator: "omar jafor chowdhury jaber",
+  generator: "Omar Jafor",
   icons: {
     icon: [
       {
