@@ -113,6 +113,9 @@ export default function ChatPage() {
           // Handle no-speech error gracefully
           if (event.error === "no-speech") {
             setError("I didn't hear anything. Please click the Speak button to try again.")
+          } else if (event.error === "aborted") {
+            // Silently handle aborted errors (user stopped speaking)
+            console.log("Recognition aborted, will auto-restart if needed")
           } else {
             setError(`Speech recognition error: ${event.error}`)
           }
@@ -190,7 +193,6 @@ export default function ChatPage() {
     }
     setMessages((prev) => [...prev, userMessage])
     setTextInput("") // Clear text input
-    setManualInputMode(false) // Exit manual input mode
 
     try {
       const response = await fetch(`${API_URL}/api/chat/message`, {
@@ -213,18 +215,25 @@ export default function ChatPage() {
       }
       setMessages((prev) => [...prev, agentMessage])
 
+      // Check if we should enable manual input mode
       if (data.validation_error === "max_retries_email" || data.validation_error === "max_retries_phone") {
         setManualInputMode(true)
         shouldAutoStartRef.current = false
+      } else {
+        // Clear manual input mode if no max retries error
+        setManualInputMode(false)
       }
 
+      // Handle conversation completion
       if (data.is_complete) {
         setIsComplete(true)
         shouldAutoStartRef.current = false
       } else {
-        shouldAutoStartRef.current = audioEnabled
+        // Set auto-listen based on backend response (MUST be after completion check)
+        shouldAutoStartRef.current = data.should_auto_listen !== false && audioEnabled && !manualInputMode
       }
 
+      // Always speak the agent's response if audio is enabled
       if (audioEnabled) {
         speak(data.agent_message)
       }
@@ -237,49 +246,70 @@ export default function ChatPage() {
   const speak = (text: string) => {
     if (!synthRef.current) return
 
+    // Cancel any ongoing speech
     synthRef.current.cancel()
+    
     const utterance = new SpeechSynthesisUtterance(text)
 
     let selectedVoice: SpeechSynthesisVoice | null = null
 
     if (availableVoices.length > 0) {
-      // Filter voices by gender
+      // Improved voice filtering by gender
       const genderFilteredVoices = availableVoices.filter((v) => {
         const voiceName = v.name.toLowerCase()
+        const voiceLang = v.lang.toLowerCase()
+        
+        // Only use English voices
+        const isEnglish = voiceLang.includes('en-us') || voiceLang.includes('en-gb') || voiceLang.includes('en')
+        
+        if (!isEnglish) return false
+        
         if (selectedAgent.gender === "female") {
           return (
-            voiceName.includes("female") ||
-            voiceName.includes("samantha") ||
-            voiceName.includes("zira") ||
-            voiceName.includes("victoria") ||
-            voiceName.includes("karen") ||
-            voiceName.includes("moira") ||
-            voiceName.includes("fiona") ||
-            voiceName.includes("tessa") ||
-            (!voiceName.includes("male") &&
-              v.name.includes("Google") &&
-              (voiceName.includes("us") || voiceName.includes("uk")))
+            voiceName.includes('female') ||
+            voiceName.includes('samantha') ||
+            voiceName.includes('zira') ||
+            voiceName.includes('victoria') ||
+            voiceName.includes('karen') ||
+            voiceName.includes('moira') ||
+            voiceName.includes('fiona') ||
+            voiceName.includes('tessa') ||
+            voiceName.includes('susan') ||
+            voiceName.includes('allison') ||
+            (voiceName.includes('google') && voiceName.includes('female')) ||
+            (!voiceName.includes('male') && (
+              voiceName.includes('google us') || 
+              voiceName.includes('google uk') ||
+              voiceName.includes('microsoft')
+            ))
           )
         } else {
+          // Better male voice filtering
           return (
-            voiceName.includes("male") ||
-            voiceName.includes("david") ||
-            voiceName.includes("alex") ||
-            voiceName.includes("daniel") ||
-            voiceName.includes("fred") ||
-            voiceName.includes("james") ||
-            voiceName.includes("jorge") ||
-            voiceName.includes("thomas")
+            voiceName.includes('male') ||
+            voiceName.includes('david') ||
+            voiceName.includes('daniel') ||
+            voiceName.includes('james') ||
+            voiceName.includes('alex') ||
+            voiceName.includes('fred') ||
+            voiceName.includes('jorge') ||
+            voiceName.includes('thomas') ||
+            voiceName.includes('oliver') ||
+            (voiceName.includes('google') && voiceName.includes('male'))
           )
         }
       })
+
+      console.log(`Available ${selectedAgent.gender} voices:`, genderFilteredVoices.map(v => v.name))
 
       // Use the voice index to select from filtered voices
       if (genderFilteredVoices.length > 0) {
         const voiceIdx = selectedAgent.voiceIndex % genderFilteredVoices.length
         selectedVoice = genderFilteredVoices[voiceIdx]
+        console.log(`Selected voice: ${selectedVoice.name}`)
       } else {
         // Fallback to any available voice
+        console.log("No gender-filtered voices found, using fallback")
         selectedVoice = availableVoices[selectedAgent.voiceIndex % availableVoices.length]
       }
     }
@@ -297,37 +327,70 @@ export default function ChatPage() {
     }
 
     utterance.onend = () => {
-      console.log("Speech synthesis ended, shouldAutoStart:", shouldAutoStartRef.current)
+      console.log("Speech synthesis ended")
+      console.log("shouldAutoStart:", shouldAutoStartRef.current)
+      console.log("audioEnabled:", audioEnabled)
+      console.log("isComplete:", isComplete)
+      console.log("manualInputMode:", manualInputMode)
+      
       setIsSpeaking(false)
 
+      // Auto-start speech recognition if all conditions are met
       if (shouldAutoStartRef.current && audioEnabled && !isComplete && !manualInputMode && !isAutoStartingRef.current) {
-        console.log("Auto-starting speech recognition...")
+        console.log("✅ Auto-starting speech recognition...")
         isAutoStartingRef.current = true
 
+        // Shorter delay for more natural conversation flow
         setTimeout(() => {
           if (recognitionRef.current && !isListening) {
             try {
               recognitionRef.current.start()
               setIsListening(true)
               setError(null)
+              console.log("🎤 Microphone activated, listening...")
 
+              // 12 seconds timeout for user response
               const timeout = setTimeout(() => {
                 if (isListening && recognitionRef.current) {
-                  console.log("No speech detected, stopping recognition")
+                  console.log("⏰ No speech detected, stopping recognition")
                   recognitionRef.current.stop()
                   setError("I didn't hear you. Please click the Speak button when you're ready to answer.")
                   setIsListening(false)
                   isAutoStartingRef.current = false
                 }
-              }, 8000)
+              }, 12000)
               setNoSpeechTimeout(timeout)
             } catch (error) {
-              console.error("Error starting recognition:", error)
+              console.error("❌ Error starting recognition:", error)
               isAutoStartingRef.current = false
+              
+              // Retry once after a short delay
+              setTimeout(() => {
+                if (recognitionRef.current && !isListening && shouldAutoStartRef.current) {
+                  try {
+                    console.log("🔄 Retrying speech recognition...")
+                    recognitionRef.current.start()
+                    setIsListening(true)
+                    isAutoStartingRef.current = false
+                  } catch (retryError) {
+                    console.error("❌ Retry failed:", retryError)
+                    isAutoStartingRef.current = false
+                  }
+                }
+              }, 500)
             }
+          } else {
+            isAutoStartingRef.current = false
           }
-        }, 1000) // 1 second delay for better UX
+        }, 800) // Reduced delay for smoother experience
+      } else {
+        console.log("❌ Auto-start conditions not met")
       }
+    }
+
+    utterance.onerror = (event) => {
+      console.error("Speech synthesis error:", event)
+      setIsSpeaking(false)
     }
 
     synthRef.current.speak(utterance)
@@ -362,7 +425,7 @@ export default function ChatPage() {
             setError("I didn't hear you. Please click the Speak button when you're ready to answer.")
             setIsListening(false)
           }
-        }, 8000)
+        }, 12000) // 12 seconds timeout
         setNoSpeechTimeout(timeout)
       } catch (error) {
         console.error("Error starting recognition:", error)
@@ -382,8 +445,10 @@ export default function ChatPage() {
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (textInput.trim()) {
-      handleUserMessage(textInput.trim())
+    const trimmedInput = textInput.trim()
+    if (trimmedInput) {
+      setError(null) // Clear any previous errors
+      handleUserMessage(trimmedInput)
     }
   }
 
@@ -521,8 +586,9 @@ export default function ChatPage() {
 
             <Button
               onClick={() => {
-                setAudioEnabled(!audioEnabled)
-                shouldAutoStartRef.current = !audioEnabled
+                const newAudioState = !audioEnabled
+                setAudioEnabled(newAudioState)
+                shouldAutoStartRef.current = newAudioState && !manualInputMode && !isComplete
               }}
               variant="outline"
               size="icon"
